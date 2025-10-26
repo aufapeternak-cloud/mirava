@@ -1,4 +1,4 @@
-// File: C:\laragon\www\a1-miravaweb\frontend\app\login\page.js
+// File: /home/runner/work/mirava/mirava/frontend/app/login/page.js
 import * as entry from '../../../../app/login/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
