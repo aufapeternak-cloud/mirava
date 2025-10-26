@@ -1,14 +1,52 @@
+/**
+ * API Client
+ * 
+ * Centralized API client for communicating with the backend.
+ * Includes automatic cookie handling, error management, and
+ * safe redirect integration.
+ * 
+ * Key Features:
+ * - Automatic cookie credentials (for JWT auth)
+ * - Request timeout (30 seconds)
+ * - Rate-limited redirects (5 second cooldown)
+ * - Safe redirect integration to prevent loops
+ * - Comprehensive error handling
+ * 
+ * @module lib/api
+ */
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 // Import safe redirect utility
 import { RedirectLoop } from './redirectLoop';
 
-// Rate limiting untuk API requests
+/**
+ * Rate limiting configuration for API client redirects
+ * Prevents rapid successive redirects to login page
+ */
 let lastRedirectTime = 0;
 const REDIRECT_COOLDOWN = 5000; // 5 seconds cooldown between redirects
+
+/**
+ * Request timeout configuration
+ * Increased from 10s to 30s to handle longer-running requests
+ */
 const REQUEST_TIMEOUT = 30000; // 30 seconds timeout for requests (increased from 10s)
 
-// Helper for API requests dengan rate limiting dan timeout
+/**
+ * Generic HTTP request helper
+ * 
+ * Handles all API requests with automatic:
+ * - Cookie credentials for authentication
+ * - Timeout management
+ * - Error handling and parsing
+ * - Auth failure detection and redirect
+ * 
+ * @param {string} endpoint - API endpoint path (e.g., '/api/auth/login')
+ * @param {Object} options - Fetch options (method, body, headers, etc.)
+ * @returns {Promise<Object>} Response data
+ * @throws {Error} On network error, timeout, or API error
+ */
 async function request(endpoint, options = {}) {
   const config = {
     credentials: 'include', // Important for cookies

@@ -27,7 +27,7 @@ export const authController = {
   async login(req, res) {
     try {
       const { email, password } = req.validatedBody;
-      console.log('Login controller - validated body:', { email, hasPassword: !!password });
+      console.log(`[Auth] Login attempt for user: ${email}`);
 
       const { token, user } = await authService.login(email, password);
 
@@ -37,13 +37,18 @@ export const authController = {
       // Set httpOnly cookie
       res.cookie(authConfig.cookieName, token, authConfig.cookieOptions);
 
+      console.log(`[Auth] Login successful for user: ${email} (${user.role})`);
+      
       res.json({
         message: 'Login successful',
         user
       });
     } catch (error) {
-      console.error('Login controller error:', error.message);
-      res.status(401).json({ error: error.message });
+      console.error(`[Auth] Login failed: ${error.message}`);
+      res.status(401).json({ 
+        error: error.message,
+        redirectToLogin: false // User is already on login page
+      });
     }
   },
 
@@ -53,17 +58,35 @@ export const authController = {
   },
 
   async me(req, res) {
-    const remainingTTL = authService.getRemainingTTL(req.user);
-
-    res.json({
-      user: {
-        id: req.user.id,
-        email: req.user.email,
-        role: req.user.role,
-        maxWorkers: req.user.maxWorkers,
-        ttlSeconds: req.user.ttlSeconds,
-        remainingTTL
+    try {
+      if (!req.user) {
+        console.warn('[Auth] /me called but no user in request');
+        return res.status(401).json({ 
+          error: 'Authentication required',
+          message: 'Session tidak ditemukan. Silakan login kembali.',
+          redirectToLogin: true 
+        });
       }
-    });
+
+      const remainingTTL = authService.getRemainingTTL(req.user);
+
+      res.json({
+        user: {
+          id: req.user.id,
+          email: req.user.email,
+          role: req.user.role,
+          maxWorkers: req.user.maxWorkers,
+          ttlSeconds: req.user.ttlSeconds,
+          remainingTTL
+        }
+      });
+    } catch (error) {
+      console.error(`[Auth] /me error: ${error.message}`);
+      res.status(500).json({ 
+        error: 'Internal server error',
+        message: 'Terjadi kesalahan saat mengambil informasi pengguna.',
+        redirectToLogin: false 
+      });
+    }
   }
 };

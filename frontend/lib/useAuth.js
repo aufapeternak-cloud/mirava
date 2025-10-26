@@ -1,27 +1,64 @@
-// Auth hook untuk mengelola state authentication dan auto-redirect
+/**
+ * Authentication Hook
+ * 
+ * This module provides React hooks for managing authentication state across
+ * the application. It includes anti-spam measures and loop prevention to
+ * ensure stable and performant authentication checking.
+ * 
+ * Key Features:
+ * - Shared authentication state across all hook instances
+ * - Rate limiting for auth checks (minimum 3s between checks)
+ * - Safe redirect system to prevent infinite loops
+ * - Automatic token refresh and session validation
+ * - Graceful handling of rate limiting errors
+ * 
+ * Usage:
+ *   const { user, loading, login, logout } = useAuth();
+ * 
+ * @module lib/useAuth
+ */
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from './api';
 import { RedirectLoop } from './redirectLoop';
 
-// Global state untuk mencegah multiple simultaneous auth checks
-let authCheckInProgress = false;
-let lastAuthCheck = 0;
-let redirectInProgress = false;
-let currentAuthPromise = null;
-let initialCheckRequested = false;
-let rateLimitRetryTimeout = null;
+/**
+ * Global state management for authentication
+ * These variables are shared across all hook instances to prevent
+ * duplicate API calls and ensure consistent state.
+ */
+let authCheckInProgress = false;     // Prevents concurrent auth checks
+let lastAuthCheck = 0;                // Timestamp of last auth check
+let redirectInProgress = false;       // Prevents multiple redirects
+let currentAuthPromise = null;        // Shared promise for concurrent calls
+let initialCheckRequested = false;    // Ensures initial check happens once
+let rateLimitRetryTimeout = null;     // Timeout for retry after rate limit
 
-// Shared auth state across hook instances
+/**
+ * Shared authentication state
+ * All hook instances subscribe to this shared state to avoid
+ * multiple API calls and ensure consistency.
+ */
 let sharedUser = null;
 let sharedLoading = true;
 let sharedError = null;
 let sharedInitialized = false;
 const subscribers = new Set();
 
-const MIN_AUTH_CHECK_INTERVAL = 2000; // 2 seconds minimum between checks
+/**
+ * Minimum time between authentication checks (in milliseconds)
+ * This prevents spam to the /me endpoint and reduces server load.
+ * 
+ * Increased from 2s to 3s to provide better rate limiting buffer
+ * and work harmoniously with backend rate limits (10 req/60s).
+ */
+const MIN_AUTH_CHECK_INTERVAL = 3000; // 3 seconds minimum between checks (increased from 2s)
 
+/**
+ * Get current authentication state snapshot
+ * @returns {Object} Current auth state
+ */
 const getSnapshot = () => ({
   user: sharedUser,
   loading: sharedLoading,
@@ -29,6 +66,14 @@ const getSnapshot = () => ({
   initialized: sharedInitialized,
 });
 
+/**
+ * Update shared authentication state and notify all subscribers
+ * 
+ * This function ensures all hook instances stay in sync by notifying
+ * them when the authentication state changes.
+ * 
+ * @param {Object} partial - Partial state update
+ */
 const updateSharedState = (partial) => {
   let hasChange = false;
 
@@ -64,6 +109,24 @@ const updateSharedState = (partial) => {
   }
 };
 
+/**
+ * Main authentication hook
+ * 
+ * Manages authentication state with anti-spam measures and automatic
+ * session validation. All instances of this hook share the same state
+ * to prevent duplicate API calls.
+ * 
+ * @returns {Object} Authentication state and methods
+ * @returns {Object|null} user - Current authenticated user or null
+ * @returns {boolean} loading - Whether auth check is in progress
+ * @returns {string|null} error - Error message if auth check failed
+ * @returns {boolean} initialized - Whether initial auth check completed
+ * @returns {Function} login - Login function
+ * @returns {Function} logout - Logout function
+ * @returns {Function} register - Register function
+ * @returns {Function} checkAuthStatus - Manual auth status check
+ * @returns {boolean} isAuthenticated - Whether user is authenticated
+ */
 export function useAuth() {
   const [state, setState] = useState(getSnapshot);
 
@@ -78,7 +141,22 @@ export function useAuth() {
     };
   }, []);
 
+  /**
+   * Check authentication status
+   * 
+   * This function checks if the user is authenticated by calling the /me
+   * endpoint. It includes multiple layers of protection against spam:
+   * 
+   * 1. Deduplication: Reuses existing promise if check is in progress
+   * 2. Rate limiting: Enforces minimum 3s interval between checks
+   * 3. Redirect prevention: Skips check if redirect is in progress
+   * 4. Graceful rate limit handling: Retries after rate limit error
+   * 
+   * @param {boolean} force - Force check even if rate limited (for initial check)
+   * @returns {Promise<Object|null>} User object or null
+   */
   const checkAuthStatus = useCallback(async (force = false) => {
+    // Deduplicate concurrent requests
     if (authCheckInProgress && currentAuthPromise) {
       console.log('⏸️ Auth check already in progress, reusing promise...');
       return currentAuthPromise;
@@ -106,9 +184,21 @@ export function useAuth() {
     currentAuthPromise = (async () => {
       try {
         const userData = await api.auth.me();
-        const isRateLimited = err?.status === 429;
-
+        updateSharedState({
+          user: userData.user,
+          initialized: true,
+          loading: false,
+          error: null,
+        });
+        return userData.user;
+      } catch (err) {
+        console.error('Auth check failed:', err.message);
+        
+        // Handle rate limiting gracefully
+        const isRateLimited = err?.message?.includes('Too many') || err?.status === 429;
+        
         if (isRateLimited) {
+          console.log('Rate limited on auth check, will retry...');
           if (!rateLimitRetryTimeout) {
             rateLimitRetryTimeout = setTimeout(() => {
               rateLimitRetryTimeout = null;
@@ -123,15 +213,6 @@ export function useAuth() {
 
           return sharedUser;
         }
-        updateSharedState({
-          user: userData.user,
-          initialized: true,
-          loading: false,
-          error: null,
-        });
-        return userData.user;
-      } catch (err) {
-        console.error('Auth check failed:', err.message);
         updateSharedState({
           user: null,
           error: err.message,
@@ -167,14 +248,16 @@ export function useAuth() {
   }, [checkAuthStatus]);
 
   useEffect(() => {
+    // Periodic check every 10 minutes (reduced from 5 minutes to reduce API calls)
     const interval = setInterval(() => {
       if (typeof window !== 'undefined') {
         const currentPath = window.location.pathname;
+        // Only check on protected pages, not on login/register
         if (currentPath !== '/login' && currentPath !== '/register' && !redirectInProgress) {
           checkAuthStatus();
         }
       }
-    }, 5 * 60 * 1000);
+    }, 10 * 60 * 1000); // 10 minutes
 
     return () => clearInterval(interval);
   }, [checkAuthStatus]);
@@ -187,14 +270,16 @@ export function useAuth() {
         clearTimeout(visibilityTimeout);
       }
 
+      // Debounce visibility change to 2 seconds
       visibilityTimeout = setTimeout(() => {
         if (!document.hidden && typeof window !== 'undefined') {
           const currentPath = window.location.pathname;
+          // Only check on protected pages when tab becomes visible
           if (currentPath !== '/login' && currentPath !== '/register' && !redirectInProgress) {
             checkAuthStatus();
           }
         }
-      }, 1000);
+      }, 2000); // Increased from 1s to 2s for better throttling
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
