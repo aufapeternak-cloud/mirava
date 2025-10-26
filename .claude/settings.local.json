@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run seed:*)",
+      "Bash(if exist dev.db del dev.db)",
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(test:*)",
+      "Bash(cat:*)",
+      "Bash(timeout 5 npm start:*)",
+      "Bash(npm start)",
+      "Bash(npm run dev:*)",
+      "Bash(curl:*)",
+      "Bash(node test-mongo.js:*)",
+      "Bash(node test-bcrypt.js:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(node test-usermodel.js:*)",
+      "Bash(node test-authservice.js:*)",
+      "Bash(pkill:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
