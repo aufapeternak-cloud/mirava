@@ -1,6 +1,8 @@
 // Utility untuk mencegah infinite redirect loops
 'use client';
 
+import { useState, useEffect } from 'react';
+
 // Global state untuk tracking redirects
 let redirectCount = 0;
 let lastRedirectTime = 0;
@@ -114,6 +116,3 @@ export function useRedirectMonitor() {
     reset: RedirectLoop.reset.bind(RedirectLoop)
   };
 }
-
-// React hook import
-import { useState, useEffect } from 'react';
